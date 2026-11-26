@@ -16,7 +16,9 @@
       --danger: #e5484d;
     }
 
-    * { box-sizing: border-box; }
+    * {
+      box-sizing: border-box;
+    }
 
     body {
       margin: 0;
@@ -116,8 +118,11 @@
   </div>
 
   <script>
-    const tg = window.Telegram.WebApp;
-    tg.expand();
+    const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
+    if (tg) {
+      tg.ready();
+      tg.expand();
+    }
 
     const MOTIVATIONS = [
       "Тяга накрывает волной и обычно отпускает через несколько минут. Дай себе 15 минут — не нужно решать за всю жизнь прямо сейчас.",
@@ -132,9 +137,11 @@
     const STORAGE_CRAVING_END_KEY = "craving_timer_end_ms";
     const STORAGE_QUOTE_KEY = "craving_active_quote";
 
+    let alertShownForCurrentTimer = false;
+
     function getStartMs() {
       let val = Number(localStorage.getItem(STORAGE_START_KEY));
-      if (!val) {
+      if (!val || Number.isNaN(val)) {
         val = Date.now();
         localStorage.setItem(STORAGE_START_KEY, String(val));
       }
@@ -174,7 +181,16 @@
         localStorage.removeItem(STORAGE_CRAVING_END_KEY);
         localStorage.removeItem(STORAGE_QUOTE_KEY);
         box.classList.remove("active");
-        tg.showAlert("15 минут прошли! Ты удержался — отличный шаг вперёд.");
+
+        if (!alertShownForCurrentTimer) {
+          alertShownForCurrentTimer = true;
+          const msg = "15 минут прошли! Ты удержался — отличный шаг вперёд.";
+          if (tg && typeof tg.showAlert === "function") {
+            tg.showAlert(msg);
+          } else {
+            alert(msg);
+          }
+        }
         return;
       }
 
@@ -188,22 +204,33 @@
     document.getElementById("cravingBtn").addEventListener("click", () => {
       const quote = MOTIVATIONS[Math.floor(Math.random() * MOTIVATIONS.length)];
       const endMs = Date.now() + 15 * 60 * 1000;
+      alertShownForCurrentTimer = false;
       localStorage.setItem(STORAGE_CRAVING_END_KEY, String(endMs));
       localStorage.setItem(STORAGE_QUOTE_KEY, quote);
       updateCravingTimer();
     });
 
     document.getElementById("resetBtn").addEventListener("click", () => {
-      tg.showConfirm("Точно сбросить прогресс и начать отсчёт заново?", (confirmed) => {
-        if (!confirmed) return;
+      const runReset = () => {
         const now = Date.now();
         localStorage.setItem(STORAGE_START_KEY, String(now));
         localStorage.removeItem(STORAGE_CRAVING_END_KEY);
         localStorage.removeItem(STORAGE_QUOTE_KEY);
+        alertShownForCurrentTimer = false;
         updateElapsed();
         updateCravingTimer();
-        tg.sendData(JSON.stringify({ action: "reset", start_time: new Date(now).toISOString() }));
-      });
+        if (tg && typeof tg.sendData === "function") {
+          tg.sendData(JSON.stringify({ action: "reset", start_time: new Date(now).toISOString() }));
+        }
+      };
+
+      if (tg && typeof tg.showConfirm === "function") {
+        tg.showConfirm("Точно сбросить прогресс и начать отсчёт заново?", (confirmed) => {
+          if (confirmed) runReset();
+        });
+      } else if (confirm("Точно сбросить прогресс и начать отсчёт заново?")) {
+        runReset();
+      }
     });
 
     updateElapsed();
